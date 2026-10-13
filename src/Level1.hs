@@ -13,6 +13,7 @@ import Data.Typeable (Typeable, tyConName, typeRep, typeRepTyCon)
 import Data.Void (Void)
 import Defs
 import MetaUtils (todo)
+import Data.List (intercalate)
 
 
 -- 1.1. Словарь вместо класса
@@ -37,16 +38,20 @@ data MonoidDict a = MonoidDict
   }
 
 sumDict :: MonoidDict Int
-sumDict = todo "1.1 sumDict"
+sumDict = MonoidDict {neutral = 0, combine = (+)}
 
 productDict :: MonoidDict Int
-productDict = todo "1.1 productDict"
+productDict = MonoidDict {neutral = 1, combine = (*)}
 
 pairDict :: MonoidDict a -> MonoidDict b -> MonoidDict (a, b)
-pairDict = todo "1.1 pairDict"
+pairDict l r =
+  MonoidDict
+    { neutral = (neutral l, neutral r),
+      combine = (\(a, b) (c, d) -> (combine l a c, combine r b d))
+    }
 
 foldDict :: MonoidDict a -> [a] -> a
-foldDict = todo "1.1 foldDict"
+foldDict m = foldr (combine m) $ neutral m
 
 
 -- 1.2. Список типов в строку
@@ -65,8 +70,17 @@ foldDict = todo "1.1 foldDict"
 typeName :: forall a. Typeable a => String
 typeName = tyConName $ typeRepTyCon $ typeRep $ Proxy @a
 
-showTypeList :: forall (tys :: [Type]) . String
-showTypeList = todo "1.2"
+showTypeList :: forall (tys :: [Type]) . TypeListNames tys => String
+showTypeList = "[" ++ intercalate "," (typeListNames @tys) ++ "]"
+
+class TypeListNames (tys :: [Type]) where
+    typeListNames :: [String]
+
+instance TypeListNames '[] where
+    typeListNames = []
+
+instance (Typeable t, TypeListNames tys) => TypeListNames (t : tys) where
+  typeListNames = typeName @t : typeListNames @tys
 
 
 -- 1.3. Дефункционализация
@@ -99,23 +113,26 @@ both p q = filterHO (\x -> p x && q x)
 -- Pred обязан оставаться в классах Show и Eq: в отличие от функций, предикаты-данные можно
 -- печатать и сравнивать, и тесты этим пользуются. Равные предикаты — построенные одинаково.
 
-data Pred = PredTodo -- Заглушка: замените своими конструкторами.
+data Pred = Even | GreaterThan Int | Both Pred Pred
   deriving (Show, Eq)
 
 applyPred :: Pred -> Int -> Bool
-applyPred = todo "1.3 applyPred"
+applyPred Even x = even x
+applyPred (GreaterThan n) x = x > n
+applyPred (Both p q) x = applyPred p x && applyPred q x
 
 filterFO :: Pred -> [Int] -> [Int]
-filterFO = todo "1.3 filterFO"
+filterFO _ [] = []
+filterFO p (x : xs) = if applyPred p x then x : filterFO p xs else filterFO p xs
 
 isEven :: Pred
-isEven = todo "1.3 isEven"
+isEven = Even
 
 isGreater :: Int -> Pred
-isGreater = todo "1.3 isGreater"
+isGreater = GreaterThan
 
 isBoth :: Pred -> Pred -> Pred
-isBoth = todo "1.3 isBoth"
+isBoth = Both
 
 
 -- 1.4. Формулы как типы
@@ -138,4 +155,9 @@ type family Interpret (prop :: Prop Type) :: Type where
   Interpret (p :-> q) = Interpret p -> Interpret q
 
 a8Like :: Interpret ((Var a :-> Var c) :/\ (Var b :-> Var c) <-> Var a :\/ Var b :-> Var c)
-a8Like = todo "1.4"
+a8Like =
+  (\(ac, bc) -> \case
+    Left a -> ac a
+    Right b -> bc b, 
+   \abc -> (\a -> abc $ Left a, \b -> abc $ Right b)
+  )
