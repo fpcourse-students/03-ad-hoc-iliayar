@@ -13,6 +13,7 @@ import Data.Map (Map)
 import Data.Typeable (Typeable)
 import Defs
 import MetaUtils (todo)
+import Data.Monoid (Sum (Sum, getSum))
 
 
 -- 2.1. Свёртка гетерогенного списка
@@ -32,11 +33,29 @@ data HSum (tys :: [Type]) where
   Here :: ty -> HSum (ty ': tys)
   There :: HSum tys -> HSum (ty ': tys)
 
-hfoldMap :: Monoid m => (HSum tys -> m) -> HList tys -> m
-hfoldMap = todo "2.1 hfoldMap"
+hfoldMap :: (Monoid m, HFoldMap tys) => (HSum tys -> m) -> HList tys -> m
+hfoldMap = hfoldMapImpl
+
+class HFoldMap (tys :: [Type]) where
+  hfoldMapImpl :: (Monoid m) => (HSum tys -> m) -> HList tys -> m
+
+instance HFoldMap '[] where
+  hfoldMapImpl _ _ = mempty
+
+instance (HFoldMap tys) => HFoldMap (ty : tys) where
+  hfoldMapImpl f (HCons x xs) =
+    f (Here x) <> hfoldMap (\hsum -> f $ There hsum) xs
 
 sumParticular :: HList '[Maybe Int, Int] -> Int
-sumParticular = todo "2.1 sumParticular"
+sumParticular =
+  getSum
+    . hfoldMap
+      ( \case
+          Here (Just x) -> Sum $ x
+          Here Nothing -> Sum 0
+          There (Here x) -> Sum x
+          There (There hsum) -> case hsum of {}
+      )
 
 
 -- 2.2. Обработчики выбирает компилятор
@@ -53,10 +72,17 @@ class to <-- from where
   transform :: from -> to
 
 hfoldMap' :: forall m tys . (Monoid m, All ((<--) m) tys) => HList tys -> m
-hfoldMap' = todo "2.2 hfoldMap'"
+hfoldMap' hlst = mconcat $ hmap @((<--) m) transform hlst
+
+instance Sum Int <-- Maybe Int where
+    transform Nothing = Sum 0
+    transform (Just x) = Sum x
+
+instance Sum Int <-- Int where
+    transform = Sum
 
 sumParticular' :: HList '[Maybe Int, Int] -> Int
-sumParticular' = todo "2.2 sumParticular'"
+sumParticular' = getSum . hfoldMap'
 
 
 -- 2.3. Кеширующий декоратор
