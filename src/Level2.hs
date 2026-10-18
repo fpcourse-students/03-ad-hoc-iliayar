@@ -4,12 +4,12 @@
 {-# LANGUAGE UndecidableInstances #-}
 module Level2 where
 
-import Control.Monad.State (State)
-import Data.Dynamic (Dynamic)
-import Data.Hashable (Hashable)
+import Control.Monad.State (State, runState, MonadState (get, put), modify)
+import Data.Dynamic (Dynamic, fromDynamic, toDyn)
+import Data.Hashable (Hashable (hash, hashWithSalt))
 import Data.Kind (Type)
 import Data.List qualified as List
-import Data.Map (Map)
+import Data.Map qualified as Map
 import Data.Typeable (Typeable)
 import Defs
 import MetaUtils (todo)
@@ -109,27 +109,40 @@ newtype Key ty = Key { getKeyHash :: Int }
   deriving newtype (Eq, Ord)
 
 -- | Вычисление с изменяемым кешем.
-type Cached a = State (Map Int Dynamic) a
+type Cached a = State (Map.Map Int Dynamic) a
 
 newKey :: Hashable a => a -> Key b
-newKey = todo "2.3 newKey"
+newKey = Key . hash
 
-runCached :: Cached a -> (a, Map Int Dynamic)
-runCached = todo "2.3 runCached"
+runCached :: Cached a -> (a, Map.Map Int Dynamic)
+runCached cached = runState cached Map.empty
 
 evalCached :: Cached a -> a
-evalCached = todo "2.3 evalCached"
+evalCached cached = fst $ runCached cached
 
-getCache :: Typeable ty => Key ty -> Cached (Maybe ty)
-getCache = todo "2.3 getCache"
+getCache :: (Typeable ty) => Key ty -> Cached (Maybe ty)
+getCache key = do
+  m <- get
+  case Map.lookup (getKeyHash key) m of
+    Nothing -> return Nothing
+    Just v -> return $ fromDynamic v
 
 storeCache :: Typeable ty => Key ty -> ty -> Cached ()
-storeCache = todo "2.3 storeCache"
+storeCache key v = do
+    modify $ Map.insert (getKeyHash key) $ toDyn v
 
 cached
   :: (All Eq tys, All Hashable tys, Typeable res)
   => (HList tys -> res) -> HList tys -> Cached res
-cached = todo "2.3 cached"
+cached f args = do
+    let key = newKey args
+    cached <- getCache key
+    case cached of
+        Just res -> return res
+        Nothing -> do
+            let res = f args
+            storeCache key res
+            return res
 
 -- Пример для экспериментов: сумма первых n чисел Фибоначчи считается долго, а повторный
 -- вызов с теми же аргументами берёт ответ из кеша. Время видно в интерпретаторе после

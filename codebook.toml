@@ -1,0 +1,6 @@
+words = ["hfold"]
+
+include_tags = [
+    "comment",
+    "string",
+]
